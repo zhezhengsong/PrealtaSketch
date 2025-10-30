@@ -16,7 +16,7 @@ struct scRNA_matrix {
     vs labels;
 } dat;
 
-vector<string> split_csv_line(const string& line);
+// vector<string> split_csv_line(const string& line);
 void read_pbmc(string file_matrix, string file_labels);
 
 
@@ -40,6 +40,17 @@ vector<string> split_csv_line(const string& line) {
     string item;
     while (getline(ss, item, ',')) tokens.pb(item);
     return tokens;
+}
+
+template <class T>
+vector<vector<T>> transpose(const vector<vector<T>>& A) {
+    if (A.empty()) return {};
+    size_t R = A.size(), C = A[0].size();
+    vector<vector<T>> B(C, vector<T>(R));
+    for (size_t i = 0; i < R; ++ i)
+        for (size_t j = 0; j < C; ++ j)
+            B[j][i] = A[i][j];
+    return B;
 }
 
 /*
@@ -72,7 +83,13 @@ void read_pbmc(string file_matrix, string file_labels) {
     // for (auto x : dat.mat[22])
     //     cout << x << ' ';
     // cout << '\n';
-
+    // P(dat.mat.size());
+    dat.mat = transpose(dat.mat);
+    // P(dat.mat.size());
+    // for (auto x : dat.mat[22])
+    //     cout << x << ' ';
+    // cout << '\n';
+    
     // Read labels
     ifstream fin2(file_labels);
     unordered_map <string, string> map_label;
