@@ -1,0 +1,2 @@
+/opt/homebrew/bin/g++-14 -std=gnu++17 -O2 -Wall -Wextra main.cpp -o main
+./main
