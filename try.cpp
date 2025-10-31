@@ -16,16 +16,22 @@ struct scRNA_matrix {
     vs labels;
 } dat;
 
-// vector<string> split_csv_line(const string& line);
+vector<string> split_csv_line(const string& line);
 void read_pbmc(string file_matrix, string file_labels);
+vector<vector<ll>> countsketch_cols(const vvi& mat, uint32_t s);
 
 
 int main(int argc, const char* argv[]) {
     string file_matrix, file_labels;
     file_matrix = "./datasets/PBMC-Zheng2017/PBMC_SC1.csv";
     file_labels = "./datasets/PBMC-Zheng2017/PBMCLabels_SC1ClusterLabels.csv";
+    // Read into global dat
     read_pbmc(file_matrix, file_labels);
     
+    int k = 20;
+    auto AS = countsketch_cols(dat.mat, k);
+    cout << "\nAS: " << AS.size() << "x" << (AS.empty()?0:AS[0].size()) << "\n";
+    for (auto& r : AS){ for (auto x : r) cout << x << " "; cout << "\n"; }        
 
     return 0;
 }
@@ -42,6 +48,9 @@ vector<string> split_csv_line(const string& line) {
     return tokens;
 }
 
+/*
+    Transpose the matrix.
+*/
 template <class T>
 vector<vector<T>> transpose(const vector<vector<T>>& A) {
     if (A.empty()) return {};
@@ -80,16 +89,8 @@ void read_pbmc(string file_matrix, string file_labels) {
     int size_genes = dat.mat.size();
     dat.genes = genes;
     P(size_genes);
-    // for (auto x : dat.mat[22])
-    //     cout << x << ' ';
-    // cout << '\n';
-    // P(dat.mat.size());
     dat.mat = transpose(dat.mat);
-    // P(dat.mat.size());
-    // for (auto x : dat.mat[22])
-    //     cout << x << ' ';
-    // cout << '\n';
-    
+
     // Read labels
     ifstream fin2(file_labels);
     unordered_map <string, string> map_label;
@@ -104,9 +105,50 @@ void read_pbmc(string file_matrix, string file_labels) {
         auto it = map_label.find(dat.cells[i]);
         dat.labels[i] = (it == map_label.end() ? "" : it->second);
     }
-    // for (int i = 0; i < dat.cells.size(); ++ i) {
-    //     cout << dat.cells[i] << ' ' << dat.labels[i] << '\n';
-    // }
-    // cout << "\n";
     return;
+}
+
+static inline uint32_t next_pow2(uint32_t x){
+    if (x <= 1) return 1u;
+    --x; x |= x>>1; x |= x>>2; x |= x>>4; x |= x>>8; x |= x>>16;
+    return x+1;
+}
+static inline uint32_t h(uint64_t x, uint32_t t){
+    const uint64_t a = 11400714819323198485ull;
+    const uint64_t b = 0x9e3779b97f4a7c15ull;
+    return (uint32_t)((a * x + b) >> (64 - t));
+}
+static inline int xi(uint64_t x){
+    const uint64_t a = 0xbf58476d1ce4e5b9ull;
+    const uint64_t b = 0x94d049bb133111ebull;
+    return ((a * x + b) >> 63) ? +1 : -1;
+}
+
+static inline uint32_t ilog2_pow2(uint32_t S){
+    uint32_t t = 0;
+    while ((1u << t) < S)
+        ++ t;
+    return t;
+}
+
+vector<vector<ll>> countsketch_cols(const vvi& mat, uint32_t s) {
+    const uint32_t m = (uint32_t) mat.size();
+    const uint32_t n = m ? (uint32_t) mat[0].size() : 0;
+
+    uint32_t S = next_pow2(max(1u, s));
+    uint32_t t = ilog2_pow2(S);
+
+    vector<vector<ll>> out(m, vector<ll>(S, 0));
+
+    for (uint32_t i = 0; i < m; ++i){
+        const auto& row = mat[i];
+        for (uint32_t j = 0; j < n; ++j){
+            int v = row[j];
+            if (v == 0) continue;
+            uint32_t c = h(j, t);
+            int sgn = xi(j);
+            out[i][c] += (ll) sgn * (ll) v;
+        }
+    }
+    return out;
 }
