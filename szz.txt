@@ -1,2 +1,0 @@
-/opt/homebrew/bin/g++-15 -std=gnu++17 -O2 -Wall -Wextra -I/opt/homebrew/include -L/opt/homebrew/lib CountSketch.cpp -o CountSketch -ligraph
-./CountSketch

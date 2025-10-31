@@ -1,3 +1,4 @@
+// CountSketch up to SNN.
 #include <bits/stdc++.h>
 #define ll long long
 #define pii pair <int, int>
@@ -5,7 +6,7 @@
 #define vs vector <string>
 #define vi vector <int>
 #define vvi vector <vi>
-#define vvpii vector<vector<pii>>
+#define vvpii vector <vector <pii>>
 #define pb push_back
 #define fi first
 #define se second

@@ -1,4 +1,7 @@
 // Full CountSketch.
+// Take params from command line.
+// params: s k clustering_resolution
+// Add time.
 #include <bits/stdc++.h>
 extern "C" {
   #include <igraph/igraph.h>
@@ -28,7 +31,7 @@ struct scRNA_matrix {
 void Read_pbmc(string file_matrix, string file_labels);
 vvi Countsketch_cols(const vvi& mat, uint32_t s);
 vvpii BuildSNNGraph(const vvi& points, int k);
-vi LouvainClustering(const vvpii& snnGraph);
+vi LouvainClustering(const vvpii& snnGraph, double res);
 double Clustering_Accuracy(const vi& y_true, const vi& y_pred);
 
 int main(int argc, const char* argv[]) {
@@ -39,26 +42,23 @@ int main(int argc, const char* argv[]) {
     Read_pbmc(file_matrix, file_labels);
     
     // CountSketch
-    int s = 1000;
+    int s = stoi(argv[1]), k = stoi(argv[2]), clustering_resolution = stod(argv[3]);
+    auto t0 = chrono::steady_clock::now();
     auto dat_countsketch = Countsketch_cols(dat.mat, s);
-    // for (auto& r : dat_countsketch) { for (auto x : r) cout << x << " "; cout << "\n"; }
+    auto t1 = chrono::steady_clock::now();
+    double cs_ms = std::chrono::duration <double, milli>(t1 - t0).count();
+    cout << fixed << setprecision(3) << "CountSketch_ms = " << cs_ms << "\n";
     
     // Build KNN
-    int k = 20;
     vvpii snnGraph = BuildSNNGraph(dat_countsketch, k);
 
     // Clustering
-    vi result_CountSketch = LouvainClustering(snnGraph);
+    vi result_CountSketch = LouvainClustering(snnGraph, clustering_resolution);
 
     // Calculate the accuracy
     vi y_true;
     for (auto x : dat.labels)
         y_true.pb(stof(x));
-    // cout << "y_true:\n";
-    // for (auto x : y_true) {
-    //     cout << x << ' ';
-    // }
-    // cout << '\n';
     double acc = Clustering_Accuracy(y_true, result_CountSketch);
     cout << fixed << setprecision(6) << "Clustering Accuracy = " << acc << "\n";
     return 0;
@@ -102,7 +102,7 @@ void Read_pbmc(string file_matrix, string file_labels) {
     auto tmp_cells = split_csv_line(line);
     dat.cells.assign(tmp_cells.begin() + 1, tmp_cells.end());
     int size_cells = dat.cells.size();
-    P(size_cells);
+    // P(size_cells);
     
     vvi rows;
     vs genes;
@@ -116,7 +116,7 @@ void Read_pbmc(string file_matrix, string file_labels) {
     }
     int size_genes = dat.mat.size();
     dat.genes = genes;
-    P(size_genes);
+    // P(size_genes);
     dat.mat = transpose(dat.mat);
 
     // Read labels
@@ -248,7 +248,7 @@ void My_add_edge(igraph_vector_int_t* edges, igraph_vector_t* weights, int from,
 /*
     Clustering on SNN using igraph.
 */
-vi LouvainClustering(const vvpii& snnGraph) {
+vi LouvainClustering(const vvpii& snnGraph, double res) {
     igraph_set_error_handler(igraph_error_handler_abort);
     igraph_t g;
     igraph_vector_int_t edges;
@@ -264,7 +264,7 @@ vi LouvainClustering(const vvpii& snnGraph) {
             My_add_edge(&edges, &weights, i, x.fi, x.se);
     igraph_create(&g, &edges, N, IGRAPH_UNDIRECTED);
     
-    igraph_community_multilevel(&g, &weights, 1.2, &membership, NULL, NULL);   
+    igraph_community_multilevel(&g, &weights, res, &membership, NULL, NULL);   
 
     // cout << "Dynamic Louvain Clustering Results:" << '\n';
     int num_vertices = igraph_vcount(&g);
