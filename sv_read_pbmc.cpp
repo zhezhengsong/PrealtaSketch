@@ -17,14 +17,14 @@ struct scRNA_matrix {
 } dat;
 
 // vector<string> split_csv_line(const string& line);
-void read_pbmc(string file_matrix, string file_labels);
+void Read_pbmc(string file_matrix, string file_labels);
 
 
 int main(int argc, const char* argv[]) {
     string file_matrix, file_labels;
     file_matrix = "./datasets/PBMC-Zheng2017/PBMC_SC1.csv";
     file_labels = "./datasets/PBMC-Zheng2017/PBMCLabels_SC1ClusterLabels.csv";
-    read_pbmc(file_matrix, file_labels);
+    Read_pbmc(file_matrix, file_labels);
     
 
     return 0;
@@ -60,7 +60,7 @@ vector<vector<T>> transpose(const vector<vector<T>>& A) {
     Read from pbmc into dat.
     This data is from "the preprint".
 */
-void read_pbmc(string file_matrix, string file_labels) {
+void Read_pbmc(string file_matrix, string file_labels) {
     // Read matrix
     ifstream fin(file_matrix);
     string line;

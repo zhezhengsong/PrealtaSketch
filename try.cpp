@@ -1,9 +1,14 @@
 #include <bits/stdc++.h>
 #define ll long long
+#define pii pair <int, int>
+#define pli pair <ll, int>
 #define vs vector <string>
 #define vi vector <int>
 #define vvi vector <vi>
+#define vvpii vector<vector<pii>>
 #define pb push_back
+#define fi first
+#define se second
 #define P(n) (cout << #n << ": " << (n) << '\n')
 using namespace std;
 
@@ -16,8 +21,9 @@ struct scRNA_matrix {
     vs labels;
 } dat;
 
-void read_pbmc(string file_matrix, string file_labels);
-vvi countsketch_cols(const vvi& mat, uint32_t s);
+void Read_pbmc(string file_matrix, string file_labels);
+vvi Countsketch_cols(const vvi& mat, uint32_t s);
+vvpii BuildSNNGraph(const vvi& points, int k);
 
 
 int main(int argc, const char* argv[]) {
@@ -25,14 +31,16 @@ int main(int argc, const char* argv[]) {
     file_matrix = "./datasets/PBMC-Zheng2017/PBMC_SC1.csv";
     file_labels = "./datasets/PBMC-Zheng2017/PBMCLabels_SC1ClusterLabels.csv";
     // Read into global dat
-    read_pbmc(file_matrix, file_labels);
+    Read_pbmc(file_matrix, file_labels);
     
-    int k = 20;
-    auto AS = countsketch_cols(dat.mat, k);
-    // cout << "\nAS: " << AS.size() << "x" << (AS.empty()?0:AS[0].size()) << "\n";
-    // for (auto& r : AS){ for (auto x : r) cout << x << " "; cout << "\n"; }
-
-
+    // CountSketch
+    int s = 20;
+    auto dat_countsketch = Countsketch_cols(dat.mat, s);
+    // for (auto& r : dat_countsketch) { for (auto x : r) cout << x << " "; cout << "\n"; }
+    
+    // Build KNN
+    int k = 15;
+    auto snnGraph = BuildSNNGraph(dat_countsketch, k);
     return 0;
 }
 
@@ -66,7 +74,7 @@ vector<vector<T>> transpose(const vector<vector<T>>& A) {
     Read from pbmc into dat.
     This data is from "the preprint".
 */
-void read_pbmc(string file_matrix, string file_labels) {
+void Read_pbmc(string file_matrix, string file_labels) {
     // Read matrix
     ifstream fin(file_matrix);
     string line;
@@ -130,7 +138,7 @@ static inline int xi(uint64_t x){
     CountSketch.
     n*m -> n*s.
 */
-vvi countsketch_cols(const vvi& mat, uint32_t s) {
+vvi Countsketch_cols(const vvi& mat, uint32_t s) {
     int n = mat.size(), m = mat[0].size();
     vvi out(n, vi (s, 0));
     for (int i = 0; i < n; ++ i) {
@@ -144,4 +152,66 @@ vvi countsketch_cols(const vvi& mat, uint32_t s) {
         }
     }
     return out;
+}
+
+/*
+    Calculate the euclidean distance.
+*/
+ll euclideanDistance(const vi& a, const vi& b) { // int?
+    ll sum = 0;
+    for (int i = 0; i < a.size(); ++ i) {
+        ll tmp = (a[i] - b[i]) * (a[i] - b[i]);
+        sum += tmp;
+    }
+    return sum;
+}
+
+/*
+    Build SNN from a vvi.
+*/
+vvpii BuildSNNGraph(const vvi& points, int k) {
+    int N = points.size();
+    
+    // KNN
+    vvi kNNGraph(N); // kNNGraph[i] is the KNN of node i.
+    vector<set<int>> kNNSet(N); // Set ver of kNNGraph.
+    for (int i = 0; i < N; ++ i) {
+        priority_queue<pli> pq;
+        for (int j = 0; j < N; ++ j) {
+            if (i == j) continue;
+            ll dist = euclideanDistance(points[i], points[j]);
+            pq.push({dist, j});
+            if (pq.size() > k)
+                pq.pop();
+        }
+        // cout << "point " << i << "'s k-NN: ";
+        while (!pq.empty()) {
+            int neighborIndex = pq.top().se;
+            kNNGraph[i].push_back(neighborIndex);
+            kNNSet[i].insert(neighborIndex);
+            // cout << neighborIndex << " ";
+            pq.pop();
+        }
+        // cout << '\n';
+    }
+
+    // SNN
+    vvpii snnGraph(N);
+    for (int i = 0; i < N; ++ i) {
+        for (int j = i + 1; j < N; ++ j) {
+            vector<int> intersection;
+            set_intersection(
+                kNNSet[i].begin(), kNNSet[i].end(),
+                kNNSet[j].begin(), kNNSet[j].end(),
+                back_inserter(intersection)
+            );
+            int snnWeight = intersection.size();
+            if (snnWeight > 0) {
+                snnGraph[i].pb({j, snnWeight});
+                snnGraph[j].pb({i, snnWeight});                
+                // cout << " find edge:(" << i << ", " << j << "), SNN weight = " << snnWeight << '\n';
+            }
+        }
+    }
+    return snnGraph;
 }
