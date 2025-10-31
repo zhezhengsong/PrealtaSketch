@@ -1,4 +1,4 @@
-# Everything here was running outside this folder before
+# Everything here was running outside this folder before!
 
 ### To find best params for CountSketch_v2.cpp
 python3 sweep_CountSketch.py

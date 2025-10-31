@@ -72,7 +72,8 @@ vs split_csv_line(const string& line) {
     vs tokens;
     stringstream ss(line);
     string item;
-    while (getline(ss, item, ',')) tokens.pb(item);
+    while (getline(ss, item, ','))
+        tokens.pb(item);
     return tokens;
 }
 
@@ -129,7 +130,7 @@ void Read_pbmc(string file_matrix, string file_labels) {
         map_label.emplace(tt[0], tt[1]);
     }
     dat.labels.resize(dat.cells.size());
-    for (size_t i = 0; i < dat.cells.size(); ++i) {
+    for (size_t i = 0; i < dat.cells.size(); ++ i) {
         auto it = map_label.find(dat.cells[i]);
         dat.labels[i] = (it == map_label.end() ? "" : it->second);
     }
@@ -139,7 +140,7 @@ void Read_pbmc(string file_matrix, string file_labels) {
 /*
     Column hash.
 */
-static inline uint32_t h_mod(uint64_t x, uint32_t s){
+static inline uint32_t h_mod(uint64_t x, uint32_t s) {
     const uint64_t a = 11400714819323198485ull;
     const uint64_t b = 0x9e3779b97f4a7c15ull;
     return (uint32_t)((a * x + b) % s);
@@ -148,7 +149,7 @@ static inline uint32_t h_mod(uint64_t x, uint32_t s){
 /*
     Sign hash.
 */
-static inline int xi(uint64_t x){
+static inline int xi(uint64_t x) {
     const uint64_t a = 0xbf58476d1ce4e5b9ull;
     const uint64_t b = 0x94d049bb133111ebull;
     return ((a * x + b) >> 63) ? +1 : -1;
@@ -288,7 +289,6 @@ vi hungarian_min_cost(const vvi& cost) {
     int n = cost.size();
     const int INF = numeric_limits<int>::max() / 4;
 
-    
     vi u(n + 1, 0), v(n + 1, 0), p(n + 1, 0), way(n + 1, 0);
     for (int i = 1; i <= n; ++ i) {
         p[0] = i;

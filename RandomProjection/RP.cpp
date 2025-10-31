@@ -1,8 +1,7 @@
-// Full CountSketch.
-// Take params from command line.
-// params: s k clustering_resolution
-// Add time.
+// Full RP.
 #include <bits/stdc++.h>
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
 extern "C" {
   #include <igraph/igraph.h>
 }
@@ -12,11 +11,17 @@ extern "C" {
 #define vs vector <string>
 #define vi vector <int>
 #define vvi vector <vi>
+#define vd vector <double>
+#define vvd vector <vd>
+#define pdi pair <double,int>
 #define vvpii vector <vector <pii>>
 #define pb push_back
 #define fi first
 #define se second
 #define P(n) (cout << #n << ": " << (n) << '\n')
+#define Matrix Eigen::MatrixXd
+#define SpMat Eigen::SparseMatrix<double>
+#define Trip Eigen::Triplet<double>
 using namespace std;
 
 // rows = genes, cols = cells
@@ -29,9 +34,12 @@ struct scRNA_matrix {
 } dat;
 
 void Read_pbmc(string file_matrix, string file_labels);
-vvi Countsketch_cols(const vvi& mat, uint32_t s);
-vvpii BuildSNNGraph(const vvi& points, int k);
-vi LouvainClustering(const vvpii& snnGraph, double res);
+// vvi Countsketch_cols(const vvi& mat, uint32_t s);
+// vvi SRP_cols(const vvi& mat, uint32_t s, double s2);
+// vvpii BuildSNNGraph(const vvi& points, int k);
+vvd SRP_cols(const vvi& mat, uint32_t s, double s2);
+vvpii BuildSNNGraph(const vvd& points, int k);
+vi LouvainClustering(const vvpii& snnGraph);
 double Clustering_Accuracy(const vi& y_true, const vi& y_pred);
 
 int main(int argc, const char* argv[]) {
@@ -42,24 +50,28 @@ int main(int argc, const char* argv[]) {
     Read_pbmc(file_matrix, file_labels);
     
     // CountSketch
-    int s = stoi(argv[1]), k = stoi(argv[2]), clustering_resolution = stod(argv[3]);
-    auto t0 = chrono::steady_clock::now();
-    auto dat_countsketch = Countsketch_cols(dat.mat, s);
-    auto t1 = chrono::steady_clock::now();
-    double cs_ms = std::chrono::duration <double, milli>(t1 - t0).count();
-    cout << fixed << setprecision(3) << "CountSketch_ms = " << cs_ms << "\n";
+    int s = 1000;
+    double s2 = 3;
+    auto dat_SRPsketch = SRP_cols(dat.mat, s, s2);
+    // for (auto& r : dat_countsketch) { for (auto x : r) cout << x << " "; cout << "\n"; }
     
     // Build KNN
-    vvpii snnGraph = BuildSNNGraph(dat_countsketch, k);
+    int k = 20;
+    vvpii snnGraph = BuildSNNGraph(dat_SRPsketch, k);
 
     // Clustering
-    vi result_CountSketch = LouvainClustering(snnGraph, clustering_resolution);
+    vi result_SRPSketch = LouvainClustering(snnGraph);
 
     // Calculate the accuracy
     vi y_true;
     for (auto x : dat.labels)
         y_true.pb(stof(x));
-    double acc = Clustering_Accuracy(y_true, result_CountSketch);
+    // cout << "y_true:\n";
+    // for (auto x : y_true) {
+    //     cout << x << ' ';
+    // }
+    // cout << '\n';
+    double acc = Clustering_Accuracy(y_true, result_SRPSketch);
     cout << fixed << setprecision(6) << "Clustering Accuracy = " << acc << "\n";
     return 0;
 }
@@ -72,8 +84,7 @@ vs split_csv_line(const string& line) {
     vs tokens;
     stringstream ss(line);
     string item;
-    while (getline(ss, item, ','))
-        tokens.pb(item);
+    while (getline(ss, item, ',')) tokens.pb(item);
     return tokens;
 }
 
@@ -103,7 +114,7 @@ void Read_pbmc(string file_matrix, string file_labels) {
     auto tmp_cells = split_csv_line(line);
     dat.cells.assign(tmp_cells.begin() + 1, tmp_cells.end());
     int size_cells = dat.cells.size();
-    // P(size_cells);
+    P(size_cells);
     
     vvi rows;
     vs genes;
@@ -117,7 +128,7 @@ void Read_pbmc(string file_matrix, string file_labels) {
     }
     int size_genes = dat.mat.size();
     dat.genes = genes;
-    // P(size_genes);
+    P(size_genes);
     dat.mat = transpose(dat.mat);
 
     // Read labels
@@ -130,112 +141,138 @@ void Read_pbmc(string file_matrix, string file_labels) {
         map_label.emplace(tt[0], tt[1]);
     }
     dat.labels.resize(dat.cells.size());
-    for (size_t i = 0; i < dat.cells.size(); ++ i) {
+    for (size_t i = 0; i < dat.cells.size(); ++i) {
         auto it = map_label.find(dat.cells[i]);
         dat.labels[i] = (it == map_label.end() ? "" : it->second);
     }
     return;
 }
 
-/*
-    Column hash.
-*/
-static inline uint32_t h_mod(uint64_t x, uint32_t s) {
-    const uint64_t a = 11400714819323198485ull;
-    const uint64_t b = 0x9e3779b97f4a7c15ull;
-    return (uint32_t)((a * x + b) % s);
-}
+static SpMat vvi_to_spmat(const vvi& mat) {
+    const int n = (int)mat.size();
+    const int m = n ? (int)mat[0].size() : 0;
 
-/*
-    Sign hash.
-*/
-static inline int xi(uint64_t x) {
-    const uint64_t a = 0xbf58476d1ce4e5b9ull;
-    const uint64_t b = 0x94d049bb133111ebull;
-    return ((a * x + b) >> 63) ? +1 : -1;
-}
+    vector<Trip> trips;
+    trips.reserve(max(1, n * m / 20));
 
-/*
-    CountSketch.
-    n*m -> n*s.
-*/
-vvi Countsketch_cols(const vvi& mat, uint32_t s) {
-    int n = mat.size(), m = mat[0].size();
-    vvi out(n, vi (s, 0));
     for (int i = 0; i < n; ++ i) {
-        const auto& row = mat[i];
-        for (int j = 0; j < m; ++ j) {
-            int v = row[j];
-            if (!v) continue; // Sparsity
-            int c = h_mod(j, s);
-            int sgn = xi(j);
-            out[i][c] += sgn * v;
+        const int row_sz = (int)mat[i].size();
+        for (int j = 0; j < row_sz; ++j) {
+            int val = mat[i][j];
+            if (val != 0) trips.emplace_back(i, j, static_cast<double>(val));
         }
     }
+    SpMat X(n, m);
+    X.setFromTriplets(trips.begin(), trips.end());
+    X.makeCompressed();
+    return X;
+}
+
+static Matrix sparse_project(const SpMat& X, uint32_t s, double s2, uint64_t seed = 114514ULL) {
+    const int m = (int)X.cols();
+
+    SpMat R(m, (int)s);
+    vector<Trip> rt;
+    rt.reserve( (size_t)( (double)m * (double)s / max(1.0, s2) ) );
+
+    mt19937_64 rng(seed);
+    uniform_real_distribution<double> U(0.0, 1.0);
+
+    const double p = 1.0 / s2;
+    const double scale = sqrt(s2 / (double)s);
+
+    for (int j = 0; j < (int)s; ++ j) {
+        for (int i = 0; i < m; ++ i) {
+            double r = U(rng);
+            if (r < 0.5 * p) {
+                rt.emplace_back(i, j,  +scale);
+            } else if (r < p) {
+                rt.emplace_back(i, j,  -scale);
+            }
+        }
+    }
+    R.setFromTriplets(rt.begin(), rt.end());
+    R.makeCompressed();
+
+    SpMat Ysp = X * R;
+    Matrix Y = Matrix(Ysp);
+    return Y;
+}
+
+/*
+    SRP sketch.
+*/
+vvd SRP_cols(const vvi& mat, uint32_t s, double s2) {
+    SpMat X = vvi_to_spmat(mat);
+    Matrix Ys = sparse_project(X, s, s2);
+
+    const int n  = (int)Ys.rows();
+    const int ss = (int)Ys.cols();
+    vvd out(n, vd(ss, 0.0));
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < ss; ++j)
+            out[i][j] = Ys(i, j);
     return out;
 }
 
+
 /*
     Calculate the euclidean distance.
+    Different from CountSketch.
 */
-ll euclideanDistance(const vi& a, const vi& b) { // int?
-    ll sum = 0;
-    for (size_t i = 0; i < a.size(); ++ i) {
-        ll tmp = (a[i] - b[i]) * (a[i] - b[i]);
-        sum += tmp;
+inline double squaredDistance(const vd& a, const vd& b) {
+    double sum = 0.0;
+    const size_t L = a.size();
+    for (size_t i = 0; i < L; ++i) {
+        double d = a[i] - b[i];
+        sum += d * d;
     }
     return sum;
 }
 
+
 /*
-    Build SNN from a vvi.
+    Build SNN from a vvd.
+    Different from CountSketch.
 */
-vvpii BuildSNNGraph(const vvi& points, int k) {
-    int N = points.size();
-    
+vvpii BuildSNNGraph(const vvd& points, int k) {
+    const int N = (int)points.size();
+
     // KNN
-    vvi kNNGraph(N); // kNNGraph[i] is the KNN of node i.
-    vector <set <int>> kNNSet(N); // Set ver of kNNGraph.
-    for (int i = 0; i < N; ++ i) {
-        priority_queue<pli> pq;
-        for (int j = 0; j < N; ++ j) {
+    vvi kNNGraph(N);
+    vector<set<int>> kNNSet(N);
+    for (int i = 0; i < N; ++i) {
+        priority_queue<pdi> pq; 
+        for (int j = 0; j < N; ++j) {
             if (i == j) continue;
-            ll dist = euclideanDistance(points[i], points[j]);
+            double dist = squaredDistance(points[i], points[j]);
             pq.push({dist, j});
-            if (pq.size() > (size_t) k)
-                pq.pop();
+            if ((int)pq.size() > k) pq.pop();
         }
-        // cout << "point " << i << "'s k-NN: ";
         while (!pq.empty()) {
-            int neighborIndex = pq.top().se;
+            int neighborIndex = pq.top().second;
             kNNGraph[i].push_back(neighborIndex);
             kNNSet[i].insert(neighborIndex);
-            // cout << neighborIndex << " ";
             pq.pop();
         }
-        // cout << '\n';
     }
 
-    // SNN
     vvpii snnGraph(N);
-    for (int i = 0; i < N; ++ i) {
-        for (int j = i + 1; j < N; ++ j) {
-            vi intersection;
+    for (int i = 0; i < N; ++i) {
+        for (int j = i + 1; j < N; ++j) {
+            vi inter;
             set_intersection(
                 kNNSet[i].begin(), kNNSet[i].end(),
                 kNNSet[j].begin(), kNNSet[j].end(),
-                back_inserter(intersection)
+                back_inserter(inter)
             );
-            int snnWeight = intersection.size();
-            if (snnWeight > 0) {
-                snnGraph[i].pb({j, snnWeight});
-                // snnGraph[j].pb({i, snnWeight}); // Important fix?
-                // cout << " find edge:(" << i << ", " << j << "), SNN weight = " << snnWeight << '\n';
-            }
+            int w = (int)inter.size();
+            if (w > 0) snnGraph[i].push_back({j, w});
         }
     }
     return snnGraph;
 }
+
 
 /*
     My add_edge for igraph.
@@ -249,7 +286,7 @@ void My_add_edge(igraph_vector_int_t* edges, igraph_vector_t* weights, int from,
 /*
     Clustering on SNN using igraph.
 */
-vi LouvainClustering(const vvpii& snnGraph, double res) {
+vi LouvainClustering(const vvpii& snnGraph) {
     igraph_set_error_handler(igraph_error_handler_abort);
     igraph_t g;
     igraph_vector_int_t edges;
@@ -265,7 +302,7 @@ vi LouvainClustering(const vvpii& snnGraph, double res) {
             My_add_edge(&edges, &weights, i, x.fi, x.se);
     igraph_create(&g, &edges, N, IGRAPH_UNDIRECTED);
     
-    igraph_community_multilevel(&g, &weights, res, &membership, NULL, NULL);   
+    igraph_community_multilevel(&g, &weights, 1.2, &membership, NULL, NULL);   
 
     // cout << "Dynamic Louvain Clustering Results:" << '\n';
     int num_vertices = igraph_vcount(&g);
@@ -289,6 +326,7 @@ vi hungarian_min_cost(const vvi& cost) {
     int n = cost.size();
     const int INF = numeric_limits<int>::max() / 4;
 
+    
     vi u(n + 1, 0), v(n + 1, 0), p(n + 1, 0), way(n + 1, 0);
     for (int i = 1; i <= n; ++ i) {
         p[0] = i;
