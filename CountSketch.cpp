@@ -1,4 +1,7 @@
 #include <bits/stdc++.h>
+extern "C" {
+  #include <igraph/igraph.h>
+}
 #define ll long long
 #define pii pair <int, int>
 #define pli pair <ll, int>
@@ -24,6 +27,7 @@ struct scRNA_matrix {
 void Read_pbmc(string file_matrix, string file_labels);
 vvi Countsketch_cols(const vvi& mat, uint32_t s);
 vvpii BuildSNNGraph(const vvi& points, int k);
+vi LouvainClustering(const vvpii& snnGraph);
 
 
 int main(int argc, const char* argv[]) {
@@ -40,7 +44,11 @@ int main(int argc, const char* argv[]) {
     
     // Build KNN
     int k = 15;
-    auto snnGraph = BuildSNNGraph(dat_countsketch, k);
+    vvpii snnGraph = BuildSNNGraph(dat_countsketch, k);
+
+    // Clustering
+    vi result_CountSketch = LouvainClustering(snnGraph);
+    
     return 0;
 }
 
@@ -174,7 +182,7 @@ vvpii BuildSNNGraph(const vvi& points, int k) {
     
     // KNN
     vvi kNNGraph(N); // kNNGraph[i] is the KNN of node i.
-    vector<set<int>> kNNSet(N); // Set ver of kNNGraph.
+    vector <set <int>> kNNSet(N); // Set ver of kNNGraph.
     for (int i = 0; i < N; ++ i) {
         priority_queue<pli> pq;
         for (int j = 0; j < N; ++ j) {
@@ -208,10 +216,55 @@ vvpii BuildSNNGraph(const vvi& points, int k) {
             int snnWeight = intersection.size();
             if (snnWeight > 0) {
                 snnGraph[i].pb({j, snnWeight});
-                snnGraph[j].pb({i, snnWeight});                
+                snnGraph[j].pb({i, snnWeight});    
                 // cout << " find edge:(" << i << ", " << j << "), SNN weight = " << snnWeight << '\n';
             }
         }
     }
     return snnGraph;
+}
+
+/*
+    My add_edge for igraph.
+*/
+void My_add_edge(igraph_vector_int_t* edges, igraph_vector_t* weights, int from, int to, double weight) {
+    igraph_vector_int_push_back(edges, from);
+    igraph_vector_int_push_back(edges, to);
+    igraph_vector_push_back(weights, weight);
+}
+
+/*
+    Clustering on SNN using igraph.
+*/
+vi LouvainClustering(const vvpii& snnGraph) {
+    igraph_set_error_handler(igraph_error_handler_abort);
+    igraph_t g;
+    igraph_vector_int_t edges;
+    igraph_vector_t weights;  
+    igraph_vector_int_t membership;
+    igraph_vector_int_init(&edges, 0);
+    igraph_vector_init(&weights, 0);
+    igraph_vector_int_init(&membership, 0);
+
+    int N = snnGraph.size();
+    for (int i = 0; i < N; ++ i)
+        for (auto x : snnGraph[i])
+            My_add_edge(&edges, &weights, i, x.fi, x.se);
+    igraph_create(&g, &edges, 0, IGRAPH_UNDIRECTED);
+    
+    igraph_community_multilevel(&g, &weights, 1.0, &membership, NULL, NULL);   
+
+    cout << "Dynamic Louvain Clustering Results:" << '\n';
+    int num_vertices = igraph_vcount(&g);
+    vector<int> memb(num_vertices);
+    for (int i = 0; i < num_vertices; ++ i) {
+        memb[i] = (int)VECTOR(membership)[i];
+        cout << i << " in cluster " << VECTOR(membership)[i] << '\n';
+    }
+
+    igraph_vector_int_destroy(&edges);
+    igraph_vector_destroy(&weights);
+    igraph_vector_int_destroy(&membership);
+    igraph_destroy(&g);
+    return memb;
 }

@@ -40,7 +40,7 @@ int main(int argc, const char* argv[]) {
     
     // Build KNN
     int k = 15;
-    auto snnGraph = BuildSNNGraph(dat_countsketch, k);
+    vvpii snnGraph = BuildSNNGraph(dat_countsketch, k);
     return 0;
 }
 
