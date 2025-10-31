@@ -16,9 +16,8 @@ struct scRNA_matrix {
     vs labels;
 } dat;
 
-vector<string> split_csv_line(const string& line);
 void read_pbmc(string file_matrix, string file_labels);
-vector<vector<ll>> countsketch_cols(const vvi& mat, uint32_t s);
+vvi countsketch_cols(const vvi& mat, uint32_t s);
 
 
 int main(int argc, const char* argv[]) {
@@ -30,8 +29,9 @@ int main(int argc, const char* argv[]) {
     
     int k = 20;
     auto AS = countsketch_cols(dat.mat, k);
-    cout << "\nAS: " << AS.size() << "x" << (AS.empty()?0:AS[0].size()) << "\n";
-    for (auto& r : AS){ for (auto x : r) cout << x << " "; cout << "\n"; }        
+    // cout << "\nAS: " << AS.size() << "x" << (AS.empty()?0:AS[0].size()) << "\n";
+    // for (auto& r : AS){ for (auto x : r) cout << x << " "; cout << "\n"; }
+
 
     return 0;
 }
@@ -108,46 +108,39 @@ void read_pbmc(string file_matrix, string file_labels) {
     return;
 }
 
-static inline uint32_t next_pow2(uint32_t x){
-    if (x <= 1) return 1u;
-    --x; x |= x>>1; x |= x>>2; x |= x>>4; x |= x>>8; x |= x>>16;
-    return x+1;
-}
-static inline uint32_t h(uint64_t x, uint32_t t){
+/*
+    Column hash.
+*/
+static inline uint32_t h_mod(uint64_t x, uint32_t s){
     const uint64_t a = 11400714819323198485ull;
     const uint64_t b = 0x9e3779b97f4a7c15ull;
-    return (uint32_t)((a * x + b) >> (64 - t));
+    return (uint32_t)((a * x + b) % s);
 }
+
+/*
+    Sign hash.
+*/
 static inline int xi(uint64_t x){
     const uint64_t a = 0xbf58476d1ce4e5b9ull;
     const uint64_t b = 0x94d049bb133111ebull;
     return ((a * x + b) >> 63) ? +1 : -1;
 }
 
-static inline uint32_t ilog2_pow2(uint32_t S){
-    uint32_t t = 0;
-    while ((1u << t) < S)
-        ++ t;
-    return t;
-}
-
-vector<vector<ll>> countsketch_cols(const vvi& mat, uint32_t s) {
-    const uint32_t m = (uint32_t) mat.size();
-    const uint32_t n = m ? (uint32_t) mat[0].size() : 0;
-
-    uint32_t S = next_pow2(max(1u, s));
-    uint32_t t = ilog2_pow2(S);
-
-    vector<vector<ll>> out(m, vector<ll>(S, 0));
-
-    for (uint32_t i = 0; i < m; ++i){
+/*
+    CountSketch.
+    n*m -> n*s.
+*/
+vvi countsketch_cols(const vvi& mat, uint32_t s) {
+    int n = mat.size(), m = mat[0].size();
+    vvi out(n, vi (s, 0));
+    for (int i = 0; i < n; ++ i) {
         const auto& row = mat[i];
-        for (uint32_t j = 0; j < n; ++j){
+        for (int j = 0; j < m; ++ j) {
             int v = row[j];
-            if (v == 0) continue;
-            uint32_t c = h(j, t);
+            if (!v) continue; // Sparsity
+            int c = h_mod(j, s);
             int sgn = xi(j);
-            out[i][c] += (ll) sgn * (ll) v;
+            out[i][c] += sgn * v;
         }
     }
     return out;
