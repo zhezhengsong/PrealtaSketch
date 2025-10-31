@@ -28,7 +28,7 @@ void Read_pbmc(string file_matrix, string file_labels);
 vvi Countsketch_cols(const vvi& mat, uint32_t s);
 vvpii BuildSNNGraph(const vvi& points, int k);
 vi LouvainClustering(const vvpii& snnGraph);
-
+double Clustering_Accuracy(const vi& y_true, const vi& y_pred);
 
 int main(int argc, const char* argv[]) {
     string file_matrix, file_labels;
@@ -38,17 +38,29 @@ int main(int argc, const char* argv[]) {
     Read_pbmc(file_matrix, file_labels);
     
     // CountSketch
-    int s = 20;
+    int s = 100;
     auto dat_countsketch = Countsketch_cols(dat.mat, s);
     // for (auto& r : dat_countsketch) { for (auto x : r) cout << x << " "; cout << "\n"; }
     
     // Build KNN
-    int k = 15;
+    int k = 20;
     vvpii snnGraph = BuildSNNGraph(dat_countsketch, k);
 
     // Clustering
     vi result_CountSketch = LouvainClustering(snnGraph);
-    
+
+    // Calculate the accuracy
+    vi y_true;
+    for (auto x : dat.labels) {
+        y_true.pb(stof(x));
+    }
+    // cout << "y_true:\n";
+    // for (auto x : y_true) {
+    //     cout << x << ' ';
+    // }
+    // cout << '\n';
+    double acc = Clustering_Accuracy(y_true, result_CountSketch);
+    cout << fixed << setprecision(6) << "Clustering Accuracy = " << acc << "\n";
     return 0;
 }
 
@@ -167,7 +179,7 @@ vvi Countsketch_cols(const vvi& mat, uint32_t s) {
 */
 ll euclideanDistance(const vi& a, const vi& b) { // int?
     ll sum = 0;
-    for (int i = 0; i < a.size(); ++ i) {
+    for (size_t i = 0; i < a.size(); ++ i) {
         ll tmp = (a[i] - b[i]) * (a[i] - b[i]);
         sum += tmp;
     }
@@ -189,7 +201,7 @@ vvpii BuildSNNGraph(const vvi& points, int k) {
             if (i == j) continue;
             ll dist = euclideanDistance(points[i], points[j]);
             pq.push({dist, j});
-            if (pq.size() > k)
+            if (pq.size() > (size_t) k)
                 pq.pop();
         }
         // cout << "point " << i << "'s k-NN: ";
@@ -216,7 +228,7 @@ vvpii BuildSNNGraph(const vvi& points, int k) {
             int snnWeight = intersection.size();
             if (snnWeight > 0) {
                 snnGraph[i].pb({j, snnWeight});
-                snnGraph[j].pb({i, snnWeight});    
+                // snnGraph[j].pb({i, snnWeight}); // Important fix?
                 // cout << " find edge:(" << i << ", " << j << "), SNN weight = " << snnWeight << '\n';
             }
         }
@@ -250,9 +262,9 @@ vi LouvainClustering(const vvpii& snnGraph) {
     for (int i = 0; i < N; ++ i)
         for (auto x : snnGraph[i])
             My_add_edge(&edges, &weights, i, x.fi, x.se);
-    igraph_create(&g, &edges, 0, IGRAPH_UNDIRECTED);
+    igraph_create(&g, &edges, N, IGRAPH_UNDIRECTED);
     
-    igraph_community_multilevel(&g, &weights, 1.0, &membership, NULL, NULL);   
+    igraph_community_multilevel(&g, &weights, 1.2, &membership, NULL, NULL);   
 
     cout << "Dynamic Louvain Clustering Results:" << '\n';
     int num_vertices = igraph_vcount(&g);
@@ -267,4 +279,110 @@ vi LouvainClustering(const vvpii& snnGraph) {
     igraph_vector_int_destroy(&membership);
     igraph_destroy(&g);
     return memb;
+}
+
+/*
+    Hungarian algo.
+*/
+vi hungarian_min_cost(const vvi& cost) {
+    int n = cost.size();
+    const int INF = numeric_limits<int>::max() / 4;
+
+    
+    vi u(n + 1, 0), v(n + 1, 0), p(n + 1, 0), way(n + 1, 0);
+    for (int i = 1; i <= n; ++ i) {
+        p[0] = i;
+        int j0 = 0;
+        vi minv(n + 1, INF);
+        vector<char> used(n + 1, false);
+
+        do {
+            used[j0] = true;
+            int i0 = p[j0], j1 = 0;
+            int delta = INF;
+            for (int j = 1; j <= n; ++ j)
+                if (!used[j]) {
+                    int cur = cost[i0 - 1][j - 1] - u[i0] - v[j];
+                    if (cur < minv[j]) {
+                        minv[j] = cur;
+                        way[j] = j0;
+                    }
+                    if (minv[j] < delta) {
+                        delta = minv[j];
+                        j1 = j;
+                    }
+            }
+            for (int j = 0; j <= n; ++ j) {
+                if (used[j]) {
+                    u[p[j]] += delta;
+                    v[j] -= delta;
+                }
+                else {
+                    minv[j] -= delta;
+                }
+            }
+            j0 = j1;
+        } while (p[j0] != 0);
+
+        do {
+            int j1 = way[j0];
+            p[j0] = p[j1];
+            j0 = j1;
+        } while (j0);
+    }
+
+    vi assignment(n, -1);
+    for (int j = 1; j <= n; ++ j)
+        if (p[j] != 0) {
+            assignment[p[j] - 1] = j - 1;
+    }
+    return assignment;
+}
+
+/*
+    Calculate the clustering accuracy.
+*/
+double Clustering_Accuracy(const vi& y_true, const vi& y_pred) {
+    if (y_true.size() != y_pred.size() || y_true.empty())
+        return 0.0;
+
+    unordered_map <int, int> map_true, map_pred;
+    int rt = 0, rp = 0;
+    for (int t : y_true)
+        if (!map_true.count(t))
+            map_true[t] = rt ++;
+    for (int p : y_pred)
+        if (!map_pred.count(p))
+            map_pred[p] = rp ++;
+
+    int k = max(rt, rp);
+    if (k == 0) return 0.0;
+
+    vvi C(k, vi (k, 0));
+    for (size_t i = 0; i < y_true.size(); ++ i) {
+        int r = map_true[y_true[i]];
+        int c = map_pred[y_pred[i]];
+        C[r][c] += 1;
+    }
+
+    int M = 0;
+    for (int i = 0; i < k; ++ i)
+        for (int j = 0; j < k; ++ j)
+            M = max(M, C[i][j]);
+
+    vvi cost(k, vi (k, 0));
+    for (int i = 0; i < k; ++ i)
+        for (int j = 0; j < k; ++ j)
+            cost[i][j] = M - C[i][j];
+
+    vi assign = hungarian_min_cost(cost);
+
+    ll matched = 0;
+    for (int i = 0; i < k; ++ i) {
+        int j = assign[i];
+        if (j >= 0)
+            matched += C[i][j];
+    }
+
+    return (double)matched / (double)y_true.size();
 }
