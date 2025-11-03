@@ -1,4 +1,6 @@
-// Full RP.
+// Random PCA
+// todo
+// Need to find the best params
 #include <bits/stdc++.h>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
