@@ -36,7 +36,8 @@ struct scRNA_matrix {
 } dat;
 
 void Read_pbmc(string file_matrix, string file_labels);
-vvd SRP_cols(const vvi& mat, uint32_t s, double s2);
+uint64_t make_unique_seed();
+vvd SRP_cols(const vvi& mat, uint32_t s, double s2, uint64_t seed);
 vvpii BuildSNNGraph(const vvd& points, int k);
 vi LouvainClustering(const vvpii& snnGraph, double res);
 double Clustering_Accuracy(const vi& y_true, const vi& y_pred);
@@ -50,7 +51,8 @@ int main(int argc, const char* argv[]) {
     
     // CountSketch
     int s = stoi(argv[1]), k = stoi(argv[2]), clustering_resolution = stod(argv[3]), s2 = stod(argv[4]);
-    auto dat_SRPsketch = SRP_cols(dat.mat, s, s2);
+    uint64_t seed = make_unique_seed();
+    auto dat_SRPsketch = SRP_cols(dat.mat, s, s2, seed);
     // for (auto& r : dat_countsketch) { for (auto x : r) cout << x << " "; cout << "\n"; }
     
     // Build KNN
@@ -145,6 +147,15 @@ void Read_pbmc(string file_matrix, string file_labels) {
     return;
 }
 
+uint64_t make_unique_seed() {
+    random_device rd;
+    uint64_t t = (uint64_t)chrono::high_resolution_clock::now().time_since_epoch().count();
+    uint64_t s = ((uint64_t)rd() << 32) ^ (uint64_t)rd() ^ t;
+    if (s == 0)
+        s = t ^ 0x9e3779b97f4a7c15ULL; // avoid zero seed
+    return s;
+}
+
 SpMat vvi_to_spmat(const vvi& mat) {
     const int n = (int)mat.size();
     const int m = n ? (int)mat[0].size() : 0;
@@ -199,9 +210,9 @@ Matrix sparse_project(const SpMat& X, uint32_t s, double s2, uint64_t seed = 114
 /*
     SRP sketch.
 */
-vvd SRP_cols(const vvi& mat, uint32_t s, double s2) {
+vvd SRP_cols(const vvi& mat, uint32_t s, double s2, uint64_t seed) {
     SpMat X = vvi_to_spmat(mat);
-    Matrix Ys = sparse_project(X, s, s2);
+    Matrix Ys = sparse_project(X, s, s2, seed);
 
     const int n  = (int)Ys.rows();
     const int ss = (int)Ys.cols();
