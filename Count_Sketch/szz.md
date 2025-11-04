@@ -1,4 +1,6 @@
 # Everything here was running outside this folder before!
+### CountSketch_key_v2
+/opt/homebrew/bin/g++-15 -std=gnu++17 -O2 -Wall -Wextra -I/opt/homebrew/include -L/opt/homebrew/lib CountSketch_key_v2.cpp -o CountSketch_key_v2 -ligraph
 
 ### To find best params for CountSketch_v2.cpp
 python3 sweep_CountSketch.py

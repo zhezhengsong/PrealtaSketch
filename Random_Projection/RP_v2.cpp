@@ -138,14 +138,14 @@ void Read_pbmc(string file_matrix, string file_labels) {
         map_label.emplace(tt[0], tt[1]);
     }
     dat.labels.resize(dat.cells.size());
-    for (size_t i = 0; i < dat.cells.size(); ++i) {
+    for (size_t i = 0; i < dat.cells.size(); ++ i) {
         auto it = map_label.find(dat.cells[i]);
         dat.labels[i] = (it == map_label.end() ? "" : it->second);
     }
     return;
 }
 
-static SpMat vvi_to_spmat(const vvi& mat) {
+SpMat vvi_to_spmat(const vvi& mat) {
     const int n = (int)mat.size();
     const int m = n ? (int)mat[0].size() : 0;
 
@@ -154,7 +154,7 @@ static SpMat vvi_to_spmat(const vvi& mat) {
 
     for (int i = 0; i < n; ++ i) {
         const int row_sz = (int)mat[i].size();
-        for (int j = 0; j < row_sz; ++j) {
+        for (int j = 0; j < row_sz; ++ j) {
             int val = mat[i][j];
             if (val != 0) trips.emplace_back(i, j, static_cast<double>(val));
         }
@@ -165,7 +165,7 @@ static SpMat vvi_to_spmat(const vvi& mat) {
     return X;
 }
 
-static Matrix sparse_project(const SpMat& X, uint32_t s, double s2, uint64_t seed = 114514ULL) {
+Matrix sparse_project(const SpMat& X, uint32_t s, double s2, uint64_t seed = 114514ULL) {
     const int m = (int)X.cols();
 
     SpMat R(m, (int)s);
@@ -182,9 +182,9 @@ static Matrix sparse_project(const SpMat& X, uint32_t s, double s2, uint64_t see
         for (int i = 0; i < m; ++ i) {
             double r = U(rng);
             if (r < 0.5 * p) {
-                rt.emplace_back(i, j,  +scale);
+                rt.emplace_back(i, j, +scale);
             } else if (r < p) {
-                rt.emplace_back(i, j,  -scale);
+                rt.emplace_back(i, j, -scale);
             }
         }
     }
@@ -206,8 +206,8 @@ vvd SRP_cols(const vvi& mat, uint32_t s, double s2) {
     const int n  = (int)Ys.rows();
     const int ss = (int)Ys.cols();
     vvd out(n, vd(ss, 0.0));
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < ss; ++j)
+    for (int i = 0; i < n; ++ i)
+        for (int j = 0; j < ss; ++ j)
             out[i][j] = Ys(i, j);
     return out;
 }
@@ -217,10 +217,10 @@ vvd SRP_cols(const vvi& mat, uint32_t s, double s2) {
     Calculate the euclidean distance.
     Different from CountSketch.
 */
-inline double squaredDistance(const vd& a, const vd& b) {
+double squaredDistance(const vd& a, const vd& b) {
     double sum = 0.0;
     const size_t L = a.size();
-    for (size_t i = 0; i < L; ++i) {
+    for (size_t i = 0; i < L; ++ i) {
         double d = a[i] - b[i];
         sum += d * d;
     }
@@ -233,14 +233,14 @@ inline double squaredDistance(const vd& a, const vd& b) {
     Different from CountSketch.
 */
 vvpii BuildSNNGraph(const vvd& points, int k) {
-    const int N = (int)points.size();
+    const int N = (int) points.size();
 
     // KNN
     vvi kNNGraph(N);
     vector<set<int>> kNNSet(N);
-    for (int i = 0; i < N; ++i) {
+    for (int i = 0; i < N; ++ i) {
         priority_queue<pdi> pq; 
-        for (int j = 0; j < N; ++j) {
+        for (int j = 0; j < N; ++ j) {
             if (i == j) continue;
             double dist = squaredDistance(points[i], points[j]);
             pq.push({dist, j});
@@ -255,8 +255,8 @@ vvpii BuildSNNGraph(const vvd& points, int k) {
     }
 
     vvpii snnGraph(N);
-    for (int i = 0; i < N; ++i) {
-        for (int j = i + 1; j < N; ++j) {
+    for (int i = 0; i < N; ++ i) {
+        for (int j = i + 1; j < N; ++ j) {
             vi inter;
             set_intersection(
                 kNNSet[i].begin(), kNNSet[i].end(),
